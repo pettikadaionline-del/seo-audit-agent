@@ -11,8 +11,9 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
+from app.ai.advisor import generate_insights
 from app.config import Settings, get_settings
-from app.models import AuditRequest, AuditResult, AuditStatus
+from app.models import AIInsights, AuditRequest, AuditResult, AuditStatus
 from app.orchestrator import AuditRunner
 from app.reports import exporters
 from app.security.url_guard import UnsafeURLError, validate_url
@@ -103,23 +104,53 @@ def create_app(settings: Settings | None = None, fetcher_factory=None) -> FastAP
 
     @app.get("/api/audits/{audit_id}/report.{fmt}", dependencies=[Depends(require_key)])
     def report(audit_id: str, fmt: str, kind: str = "issues") -> Response:
-        r = completed(audit_id)
-        name = f"seo-audit-{audit_id}"
-        if fmt == "json":
-            return Response(exporters.to_json(r), media_type="application/json",
-                            headers={"Content-Disposition": f'attachment; filename="{name}.json"'})
-        if fmt == "csv":
-            body = exporters.pages_csv(r) if kind == "pages" else exporters.issues_csv(r)
-            return PlainTextResponse(body, media_type="text/csv",
-                                     headers={"Content-Disposition": f'attachment; filename="{name}-{kind}.csv"'})
-        if fmt == "html":
-            return HTMLResponse(exporters.to_html(r))
-        if fmt == "pdf":
-            return Response(exporters.to_pdf(r), media_type="application/pdf",
-                            headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
-        raise HTTPException(400, "Format must be json, csv, html or pdf")
+        return _render_report(completed(audit_id), fmt, kind)
+
+    # ---- Stateless API (serverless hosting, e.g. Vercel) -------------------
+    # Each call does one bounded unit of work and returns everything the client
+    # needs; the client keeps the result and sends it back for AI / exports.
+
+    @app.post("/api/audit/run", dependencies=[Depends(require_key), Depends(rate_limit)])
+    async def run_audit_sync(req: AuditRequest) -> AuditResult:
+        """Crawl + analyse + score, synchronously, within SEO_CRAWL_TIME_BUDGET_S. No AI."""
+        for u in [req.url, *req.competitors]:
+            try:
+                await validate_url(str(u), settings.allow_private_networks)
+            except UnsafeURLError as exc:
+                raise HTTPException(422, f"URL rejected: {exc}") from exc
+        result = AuditResult(id=uuid.uuid4().hex[:16], url=str(req.url), status=AuditStatus.queued)
+        result = await runner.run(result, req.model_copy(update={"use_ai": False}))
+        if result.status == AuditStatus.failed:
+            raise HTTPException(502, result.error or "Audit failed")
+        return result
+
+    @app.post("/api/insights", dependencies=[Depends(require_key), Depends(rate_limit)])
+    async def insights(result: AuditResult) -> AIInsights:
+        """AI recommendations for an audit result produced by /api/audit/run."""
+        return await generate_insights(result, settings)
+
+    @app.post("/api/report.{fmt}", dependencies=[Depends(require_key)])
+    def report_stateless(fmt: str, result: AuditResult, kind: str = "issues") -> Response:
+        return _render_report(result, fmt, kind)
 
     return app
+
+
+def _render_report(r: AuditResult, fmt: str, kind: str) -> Response:
+    name = f"seo-audit-{r.id}"
+    if fmt == "json":
+        return Response(exporters.to_json(r), media_type="application/json",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.json"'})
+    if fmt == "csv":
+        body = exporters.pages_csv(r) if kind == "pages" else exporters.issues_csv(r)
+        return PlainTextResponse(body, media_type="text/csv",
+                                 headers={"Content-Disposition": f'attachment; filename="{name}-{kind}.csv"'})
+    if fmt == "html":
+        return HTMLResponse(exporters.to_html(r))
+    if fmt == "pdf":
+        return Response(exporters.to_pdf(r), media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})
+    raise HTTPException(400, "Format must be json, csv, html or pdf")
 
 
 app = create_app()

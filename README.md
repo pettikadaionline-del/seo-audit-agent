@@ -31,7 +31,7 @@ cd backend
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 cp ../.env.example .env            # optional: add ANTHROPIC_API_KEY, SEO_PAGESPEED_API_KEY
 .venv/bin/uvicorn app.main:app --reload --port 8000
-.venv/bin/pytest                   # 32 tests, no network needed
+.venv/bin/pytest                   # 36 tests, no network needed
 
 # Frontend (new terminal)
 cd frontend
@@ -39,13 +39,17 @@ npm install
 npm run dev                        # http://localhost:3000
 ```
 
+## Deploy on Vercel
+
+Two Vercel projects from this repo (`backend` + `frontend`), about 20 minutes, free tier works. Step-by-step: **[docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md)**.
+
 ## Docker
 
 ```bash
 cp .env.example .env               # fill in keys
 docker compose up --build          # web :3000, api :8000
 ```
-`NEXT_PUBLIC_API_URL` is baked in at build time; set `PUBLIC_API_URL` when the API is not on `localhost:8000`.
+The dashboard calls the backend through its own `/api` proxy (`BACKEND_URL`, `BACKEND_API_KEY`, optional `APP_ACCESS_CODE`).
 
 ## API
 
@@ -58,6 +62,9 @@ docker compose up --build          # web :3000, api :8000
 | `GET` | `/api/audits/{id}/report.{pdf\|html\|json\|csv}` | CSV: `?kind=issues` (default) or `?kind=pages` |
 | `DELETE` | `/api/audits/{id}` | |
 | `GET` | `/api/health` | |
+| `POST` | `/api/audit/run` | **Stateless** (used by the dashboard / Vercel): crawl + score in one request, returns the full result |
+| `POST` | `/api/insights` | Body: an audit result → Claude recommendations |
+| `POST` | `/api/report.{pdf\|html\|json\|csv}` | Body: an audit result → file |
 
 Interactive docs: `http://localhost:8000/docs`.
 

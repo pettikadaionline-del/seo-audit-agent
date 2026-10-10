@@ -43,13 +43,25 @@ class _AIOutput(BaseModel):
     days_90: list[str]
 
 
+MAX_EVIDENCE_CHARS = 1500
+
+
+def _clip_evidence(evidence: dict) -> str | None:
+    """Evidence as a bounded JSON string (results can now come from the client)."""
+    data = {k: v for k, v in evidence.items() if k != "total_affected"}
+    if not data:
+        return None
+    text = json.dumps(data, default=str)
+    return text if len(text) <= MAX_EVIDENCE_CHARS else text[:MAX_EVIDENCE_CHARS] + "...(truncated)"
+
+
 def _compact_findings(result: AuditResult, limit: int) -> dict:
     return {
         "site": result.url,
         "overall_score": result.overall_score,
         "category_scores": {c.category.value: c.score for c in result.category_scores},
         "pages_crawled": result.stats.get("pages_crawled"),
-        "page_titles_sample": [p.title for p in result.pages[:15] if p.title],
+        "page_titles_sample": [p.title[:120] for p in result.pages[:15] if p.title],
         "issues": [
             {
                 "id": i.id,
@@ -58,7 +70,7 @@ def _compact_findings(result: AuditResult, limit: int) -> dict:
                 "affected_pages": i.evidence.get("total_affected", len(i.affected_urls)),
                 "example_urls": i.affected_urls[:3],
                 "effort": i.effort.value,
-                "evidence": {k: v for k, v in i.evidence.items() if k not in ("total_affected",)} or None,
+                "evidence": _clip_evidence(i.evidence),
             }
             for i in result.issues[:limit]
         ],

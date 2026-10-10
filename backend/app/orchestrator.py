@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import statistics
+import time
 from collections import Counter
 from datetime import datetime, timezone
 
@@ -31,6 +32,12 @@ class AuditRunner:
         s = self.settings
         max_pages = min(req.max_pages or s.default_max_pages, s.max_pages_limit)
         max_depth = min(req.max_depth if req.max_depth is not None else 3, s.max_depth_limit)
+        started = time.monotonic()
+        deadline = started + s.crawl_time_budget_s if s.crawl_time_budget_s else None
+        # Leave ~30% of the budget for competitor crawls when there are any
+        main_deadline = (
+            started + s.crawl_time_budget_s * (0.7 if req.competitors else 1.0) if s.crawl_time_budget_s else None
+        )
 
         async def progress(n: int, url: str) -> None:
             result.progress = min(70, 5 + int(65 * n / max_pages))
@@ -45,20 +52,31 @@ class AuditRunner:
 
             fetcher = self.fetcher_factory()
             try:
-                crawler = Crawler(s, str(req.url), max_pages, max_depth, req.respect_robots, fetcher=fetcher, progress=progress)
+                crawler = Crawler(
+                    s, str(req.url), max_pages, max_depth, req.respect_robots,
+                    fetcher=fetcher, progress=progress, deadline=main_deadline,
+                )
                 psi_task = (
                     asyncio.create_task(fetch_pagespeed(str(req.url), s.pagespeed_api_key)) if s.pagespeed_api_key else None
                 )
                 pages, site = await crawler.run()
                 if psi_task:
-                    site.pagespeed = await psi_task
+                    wait = max(1.0, deadline - time.monotonic()) if deadline else None
+                    try:
+                        site.pagespeed = await asyncio.wait_for(psi_task, wait)
+                    except asyncio.TimeoutError:
+                        site.pagespeed = {"error": "PageSpeed Insights did not respond within the time budget"}
 
                 competitor_profiles = []
                 for comp_url in req.competitors[:3]:
+                    if deadline and time.monotonic() >= deadline - 3:
+                        competitor_profiles.append({"url": str(comp_url), "error": "Skipped: time budget reached"})
+                        continue
                     result.message = f"Crawling competitor {comp_url}"
                     self.store.save(result)
                     try:
-                        cp, cs = await Crawler(s, str(comp_url), COMPETITOR_MAX_PAGES, 2, True, fetcher=fetcher).run()
+                        comp_pages = COMPETITOR_MAX_PAGES if not s.serverless else 6
+                        cp, cs = await Crawler(s, str(comp_url), comp_pages, 2, True, fetcher=fetcher, deadline=deadline).run()
                         competitor_profiles.append(profile_site(cp, cs))
                     except Exception as exc:
                         log.warning("competitor crawl failed for %s: %s", comp_url, exc)

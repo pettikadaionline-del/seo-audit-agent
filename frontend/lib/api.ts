@@ -1,5 +1,3 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
 
 export interface Issue {
@@ -64,37 +62,67 @@ export interface Audit {
 export interface AuditListItem {
   id: string;
   url: string;
-  status: string;
   created_at: string;
   overall_score: number | null;
   grade: string | null;
 }
 
-function headers(): HeadersInit {
-  const key = process.env.NEXT_PUBLIC_API_KEY;
-  return { "Content-Type": "application/json", ...(key ? { "X-API-Key": key } : {}) };
+const ACCESS_KEY = "seo-audit:access-code";
+
+export function getAccessCode(): string {
+  try {
+    return localStorage.getItem(ACCESS_KEY) ?? "";
+  } catch {
+    return "";
+  }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { ...init, headers: headers(), cache: "no-store" });
+export function setAccessCode(code: string) {
+  try {
+    localStorage.setItem(ACCESS_KEY, code);
+  } catch {}
+}
+
+/** All calls go to this app's own /api proxy (app/api/[...path]/route.ts). */
+async function post(path: string, body: unknown): Promise<Response> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-access-code": getAccessCode() },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
   if (!res.ok) {
-    let detail = res.statusText;
+    let detail = `${res.status} ${res.statusText}`;
     try {
-      const body = await res.json();
-      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-    } catch {}
+      const data = await res.json();
+      detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+    } catch {
+      if (res.status === 504) detail = "The audit took too long. Try fewer pages or no competitors.";
+    }
     throw new Error(detail);
   }
-  return res.json() as Promise<T>;
+  return res;
 }
 
+export type ReportFormat = "json" | "csv" | "html" | "pdf";
+
 export const api = {
-  create: (body: { url: string; max_pages?: number; competitors?: string[]; use_ai?: boolean }) =>
-    request<{ id: string }>("/api/audits", { method: "POST", body: JSON.stringify(body) }),
-  list: () => request<AuditListItem[]>("/api/audits"),
-  get: (id: string) => request<Audit>(`/api/audits/${id}`),
-  reportUrl: (id: string, fmt: "json" | "csv" | "html" | "pdf", kind?: "issues" | "pages") =>
-    `${API_URL}/api/audits/${id}/report.${fmt}${kind ? `?kind=${kind}` : ""}`,
+  run: async (body: { url: string; max_pages?: number; competitors?: string[] }) =>
+    (await post("/audit/run", body)).json() as Promise<Audit>,
+  insights: async (audit: Audit) => (await post("/insights", audit)).json() as Promise<AIInsights>,
+  /** Builds a report on the server from the stored result and triggers a download / new tab. */
+  report: async (audit: Audit, fmt: ReportFormat, kind: "issues" | "pages" = "issues") => {
+    const res = await post(`/report.${fmt}${fmt === "csv" ? `?kind=${kind}` : ""}`, audit);
+    const url = URL.createObjectURL(await res.blob());
+    // Popup blockers may refuse window.open after an await; fall back to a download.
+    if (fmt !== "html" || !window.open(url, "_blank")) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `seo-audit-${audit.id}${fmt === "csv" ? `-${kind}` : ""}.${fmt}`;
+      a.click();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  },
 };
 
 const LABELS: Record<string, string> = {

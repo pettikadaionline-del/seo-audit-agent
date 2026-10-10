@@ -6,10 +6,11 @@ services:
     volumes: ["audit-data:/app/data"]
     restart: unless-stopped
   web:
-    build:
-      context: ./frontend
-      args:
-        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
+    build: ./frontend
+    environment:
+      BACKEND_URL: http://api:8000
+      BACKEND_API_KEY: ${SEO_API_KEY:-}
+      APP_ACCESS_CODE: ${APP_ACCESS_CODE:-}
     ports: ["3000:3000"]
     depends_on: [api]
     restart: unless-stopped

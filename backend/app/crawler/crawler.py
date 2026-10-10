@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from urllib.parse import urlsplit, urlunsplit
 
@@ -27,6 +28,7 @@ class Crawler:
         respect_robots: bool = True,
         fetcher: Fetcher | None = None,
         progress: ProgressCb | None = None,
+        deadline: float | None = None,
     ):
         self.settings = settings
         self.start_url = normalize(start_url) or start_url
@@ -39,6 +41,8 @@ class Crawler:
         self.fetcher = fetcher or Fetcher(settings)
         self._owns_fetcher = fetcher is None
         self.progress = progress
+        self.deadline = deadline  # time.monotonic() value; stop fetching new pages after it
+        self.timed_out = False
         self.pages: dict[str, PageData] = {}
         self.robots = Robots(self.origin, settings.user_agent)
 
@@ -63,7 +67,7 @@ class Crawler:
             sitemaps_declared=self.robots.sitemaps,
         )
         candidates = site.sitemaps_declared or [f"{self.origin}/sitemap.xml"]
-        site.sitemap_urls, site.sitemap_errors = await load_sitemaps(self.fetcher, candidates)
+        site.sitemap_urls, site.sitemap_errors = await load_sitemaps(self.fetcher, candidates, deadline=self.deadline)
         if not site.sitemaps_declared and not site.sitemap_urls:
             site.sitemap_errors = ["No sitemap declared in robots.txt and /sitemap.xml not found"]
 
@@ -105,6 +109,9 @@ class Crawler:
             while True:
                 url, depth = await queue.get()
                 try:
+                    if self._out_of_time():
+                        self.timed_out = True
+                        continue
                     async with sem:
                         page = await self._fetch_page(url, depth)
                         await asyncio.sleep(delay)
@@ -123,8 +130,11 @@ class Crawler:
         await queue.join()
         for w in workers:
             w.cancel()
-        site.crawl_truncated = len(seen) >= self.max_pages
+        site.crawl_truncated = len(seen) >= self.max_pages or self.timed_out
         return sorted(self.pages.values(), key=lambda p: (p.depth, p.url))
+
+    def _out_of_time(self) -> bool:
+        return self.deadline is not None and time.monotonic() >= self.deadline
 
     async def _fetch_page(self, url: str, depth: int) -> PageData:
         if self.respect_robots and not self.robots.allowed(url):

@@ -1,7 +1,9 @@
 "use client";
 
 import { use, useEffect, useMemo, useState } from "react";
-import { api, label, type Audit, type Issue, type Severity } from "@/lib/api";
+import Link from "next/link";
+import { api, label, type Audit, type Issue, type ReportFormat, type Severity } from "@/lib/api";
+import { getAudit, saveAudit } from "@/lib/storage";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
 const TABS = ["overview", "action center", "pages", "competitors", "export"] as const;
@@ -13,48 +15,17 @@ function scoreColor(s: number) {
 
 export default function AuditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const [audit, setAudit] = useState<Audit | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [audit, setAudit] = useState<Audit | null | undefined>(undefined);
   const [tab, setTab] = useState<Tab>("overview");
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const a = await api.get(id);
-        if (cancelled) return;
-        setAudit(a);
-        if (a.status !== "completed" && a.status !== "failed") timer = setTimeout(poll, 2000);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      }
-    };
-    poll();
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [id]);
+  useEffect(() => setAudit(getAudit(id)), [id]);
 
-  if (error) return <div className="panel error">{error}</div>;
-  if (!audit) return <div className="panel muted">Loading…</div>;
-
-  if (audit.status === "failed")
+  if (audit === undefined) return <div className="panel muted">Loading…</div>;
+  if (audit === null)
     return (
       <div className="panel">
-        <h1>Audit failed</h1>
-        <p className="url">{audit.url}</p>
-        <p className="error">{audit.error}</p>
-      </div>
-    );
-
-  if (audit.status !== "completed")
-    return (
-      <div className="panel">
-        <h1>Auditing {audit.url}</h1>
-        <p className="muted">{label(audit.status)} — {audit.message}</p>
-        <div className="progress"><span style={{ width: `${audit.progress}%` }} /></div>
+        <h1>Audit not found</h1>
+        <p className="muted">Audits are saved in the browser that ran them. <Link href="/">Run a new audit</Link>.</p>
       </div>
     );
 
@@ -87,17 +58,30 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
         ))}
       </div>
 
-      {tab === "overview" && <Overview audit={audit} />}
+      {tab === "overview" && <Overview audit={audit} onUpdate={(a) => { saveAudit(a); setAudit(a); }} />}
       {tab === "action center" && <ActionCenter issues={audit.issues} />}
       {tab === "pages" && <Pages audit={audit} />}
       {tab === "competitors" && <Competitors audit={audit} />}
-      {tab === "export" && <Export id={audit.id} />}
+      {tab === "export" && <Export audit={audit} />}
     </>
   );
 }
 
-function Overview({ audit }: { audit: Audit }) {
+function Overview({ audit, onUpdate }: { audit: Audit; onUpdate: (a: Audit) => void }) {
   const ai = audit.ai;
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function generate() {
+    setBusy(true);
+    setErr(null);
+    try {
+      onUpdate({ ...audit, ai: await api.insights(audit) });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <>
       <section className="panel">
@@ -113,6 +97,14 @@ function Overview({ audit }: { audit: Audit }) {
           ))}
         </div>
       </section>
+      {!ai && (
+        <section className="panel">
+          <h2>AI recommendations</h2>
+          <p className="muted">Not generated for this audit yet.</p>
+          <button className="btn primary" onClick={generate} disabled={busy}>{busy ? "Generating (up to ~40 s)…" : "Generate with Claude"}</button>
+          {err && <p className="error">{err}</p>}
+        </section>
+      )}
       {ai && (
         <>
           <section className="panel">
@@ -272,20 +264,38 @@ function Competitors({ audit }: { audit: Audit }) {
   );
 }
 
-function Export({ id }: { id: string }) {
-  const links: [string, string][] = [
-    ["PDF report", api.reportUrl(id, "pdf")],
-    ["HTML report", api.reportUrl(id, "html")],
-    ["Issues CSV", api.reportUrl(id, "csv", "issues")],
-    ["Pages CSV", api.reportUrl(id, "csv", "pages")],
-    ["Full JSON", api.reportUrl(id, "json")],
+function Export({ audit }: { audit: Audit }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const items: [string, ReportFormat, ("issues" | "pages")?][] = [
+    ["PDF report", "pdf"],
+    ["HTML report", "html"],
+    ["Issues CSV", "csv", "issues"],
+    ["Pages CSV", "csv", "pages"],
+    ["Full JSON", "json"],
   ];
+  async function download(name: string, fmt: ReportFormat, kind?: "issues" | "pages") {
+    setBusy(name);
+    setErr(null);
+    try {
+      await api.report(audit, fmt, kind);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
   return (
     <section className="panel">
       <h2>Export</h2>
       <div className="row">
-        {links.map(([name, href]) => <a key={name} className="btn" href={href} target="_blank" rel="noreferrer">{name}</a>)}
+        {items.map(([name, fmt, kind]) => (
+          <button key={name} className="btn" disabled={busy !== null} onClick={() => download(name, fmt, kind)}>
+            {busy === name ? "Preparing…" : name}
+          </button>
+        ))}
       </div>
+      {err && <p className="error">{err}</p>}
       <p className="muted">CSV opens in Excel / Google Sheets — assign rows to your developer or agency as tickets.</p>
     </section>
   );

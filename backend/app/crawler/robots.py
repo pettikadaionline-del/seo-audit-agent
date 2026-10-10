@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import gzip
+import time
 from urllib.robotparser import RobotFileParser
 
 from bs4 import BeautifulSoup
@@ -44,13 +45,18 @@ class Robots:
         return float(d) if d else None
 
 
-async def load_sitemaps(fetcher: Fetcher, sitemap_urls: list[str], limit: int = 5000) -> tuple[list[str], list[str]]:
+async def load_sitemaps(
+    fetcher: Fetcher, sitemap_urls: list[str], limit: int = 5000, deadline: float | None = None
+) -> tuple[list[str], list[str]]:
     """Fetch sitemaps (incl. sitemap indexes, gzip). Returns (urls, errors)."""
     urls: list[str] = []
     errors: list[str] = []
     queue = list(dict.fromkeys(sitemap_urls))
     seen: set[str] = set()
     while queue and len(seen) < 25 and len(urls) < limit:
+        if deadline is not None and time.monotonic() >= deadline:
+            errors.append("Stopped reading sitemaps: time budget reached")
+            break
         sm = queue.pop(0)
         if sm in seen:
             continue
