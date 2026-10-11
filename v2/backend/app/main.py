@@ -1,8 +1,12 @@
+import hmac
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import update
 
 from app.api.routes import router
@@ -32,4 +36,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def access_gate(request: Request, call_next):
+    code = get_settings().access_code
+    path = request.url.path
+    if code and path.startswith("/api/") and path != "/api/health" and request.method != "OPTIONS":
+        # Header for fetch() calls; ?code= for plain download links (exports).
+        given = request.headers.get("x-access-code") or request.query_params.get("code") or ""
+        if not hmac.compare_digest(given.encode(), code.encode()):
+            return JSONResponse({"detail": "access_code_required"}, status_code=401)
+    return await call_next(request)
+
+
 app.include_router(router)
+
+_static = Path(get_settings().static_dir)
+if _static.is_dir():
+    app.mount("/", StaticFiles(directory=_static, html=True), name="dashboard")

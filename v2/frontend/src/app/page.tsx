@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Loader2, Search, Trash2 } from "lucide-react";
-import { api, type AuditBrief } from "@/lib/api";
+import { AccessCodeError, api, getAccessCode, setAccessCode, type AuditBrief } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -33,9 +33,20 @@ export default function Home() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audits, setAudits] = useState<AuditBrief[] | null>(null);
+  const [codeRequired, setCodeRequired] = useState(false);
+  const [code, setCode] = useState("");
 
-  const load = () => api.listAudits().then(setAudits).catch(() => setAudits([]));
+  const load = () =>
+    api
+      .listAudits()
+      .then(setAudits)
+      .catch((e) => {
+        if (e instanceof AccessCodeError) setCodeRequired(true);
+        setAudits([]);
+      });
   useEffect(() => {
+    setCode(getAccessCode());
+    api.health().then((h) => setCodeRequired(h.access_code_required)).catch(() => {});
     load();
   }, []);
 
@@ -43,10 +54,11 @@ export default function Home() {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
+    setAccessCode(code.trim());
     try {
       const comps = competitors.split(/[\n,]/).map((s) => s.trim()).filter(Boolean).slice(0, 3);
       const audit = await api.createAudit({ url, max_pages: maxPages, max_depth: maxDepth, competitors: comps, pagespeed });
-      router.push(`/audits/${audit.id}`);
+      router.push(`/audit/?id=${audit.id}`);
     } catch (err) {
       setError((err as Error).message);
       setSubmitting(false);
@@ -72,6 +84,22 @@ export default function Home() {
                 Run audit
               </Button>
             </div>
+            {codeRequired && (
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">Access code</span>
+                <Input
+                  type="password"
+                  required
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  onBlur={() => {
+                    setAccessCode(code.trim());
+                    load();
+                  }}
+                  placeholder="Ask the site owner for the access code"
+                />
+              </label>
+            )}
             <button type="button" onClick={() => setAdvanced((v) => !v)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
               <ChevronDown className={cn("h-4 w-4 transition-transform", advanced && "rotate-180")} /> Options & competitors
             </button>
@@ -131,7 +159,7 @@ export default function Home() {
               {audits.map((a) => (
                 <li key={a.id} className="flex items-center gap-3 py-3">
                   <span className={cn("w-10 text-right text-lg font-bold tabular-nums", scoreColor(a.overall_score))}>{a.overall_score ?? "–"}</span>
-                  <Link href={`/audits/${a.id}`} className="min-w-0 flex-1">
+                  <Link href={`/audit/?id=${a.id}`} className="min-w-0 flex-1">
                     <div className="truncate font-medium hover:underline">{a.url}</div>
                     <div className="text-xs text-muted-foreground">{new Date(a.created_at).toLocaleString()}</div>
                   </Link>

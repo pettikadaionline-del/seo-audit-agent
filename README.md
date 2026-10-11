@@ -1,5 +1,10 @@
 # SEO Audit Agent
 
+> **v2 (recommended): [`v2/`](v2/README.md).** One deployable service (dashboard + API), an access code, an evidence-backed action plan with status tracking, and 38 tests. Deploy in one click:
+> [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pettikadaionline-del/seo-audit-agent)
+>
+> The rest of this README describes v1 (`backend/` + `frontend/`, Vercel setup), which is kept unchanged.
+
 AI-powered website SEO auditor. Submit a URL → it crawls the site, runs 8 specialist audit agents, scores the site and returns a prioritised, consultant-style action plan. Exports to PDF, HTML, CSV and JSON.
 
 ```

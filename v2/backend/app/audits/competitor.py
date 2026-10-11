@@ -83,7 +83,7 @@ def run(ctx: AuditContext) -> list[Finding]:
     if any(c["has_faq_schema"] or c["pct_with_question_headings"] > 20 for c in comps) and not you["has_faq_schema"] and you["pct_with_question_headings"] <= 20:
         out.append(finding("comp.faq_gap", C, "Competitors answer customer questions on-page; you don't", Severity.medium,
                            "At least one competitor uses FAQ markup or question-style headings on 20%+ of pages. Such content can win 'People also ask' and AI answer placements.",
-                           "Add FAQ blocks built from real customer questions (WhatsApp/email queries are a goldmine).",
+                           "Add FAQ blocks built from real customer questions (support tickets, sales calls and search queries are good sources).",
                            ev("pct_with_question_headings"), site_level=True, effort=2, confidence="medium"))
 
     m = med("median_ttfb_ms")
@@ -96,6 +96,6 @@ def run(ctx: AuditContext) -> list[Finding]:
     if m and you["sitemap_urls"] and you["sitemap_urls"] < 0.3 * m and m > 50:
         out.append(finding("comp.site_size", C, "Competitors have a much larger indexable footprint", Severity.info,
                            f"Your sitemap lists {you['sitemap_urls']} URLs vs a competitor median of {int(m)}. More pages = more queries you can rank for, if each page is useful.",
-                           "Plan content that targets real search demand: recipe/usage guides, gifting guides, regional specialities, comparison pages.",
+                           "Plan content that targets real search demand: guides, use-case pages, comparison pages and answers to common questions.",
                            ev("sitemap_urls"), site_level=True, effort=5, confidence="medium"))
     return out

@@ -101,7 +101,7 @@ def run(ctx: AuditContext) -> list[Finding]:
              if any(k not in p.og for k in ("title", "description", "image"))]
     if no_og:
         out.append(finding("onpage.open_graph_missing", C, "Incomplete Open Graph tags", Severity.low,
-                           "Open Graph tags control the preview when pages are shared on WhatsApp, Facebook and LinkedIn, which affects social click-through.",
+                           "Open Graph tags control the preview when pages are shared on social networks and messaging apps, which affects social click-through.",
                            "Add og:title, og:description and og:image (1200×630) to every page template.", no_og, effort=1))
 
     title_eq_h1 = [(p.url, {"title": p.title}) for p in pages if p.title and p.h1 and p.title.strip().lower() == p.h1[0].strip().lower() and len(pages) > 3]

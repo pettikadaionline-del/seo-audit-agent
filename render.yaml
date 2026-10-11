@@ -1,0 +1,22 @@
+# One-click deploy of the v2 SEO Audit Agent (dashboard + API in one service).
+# https://render.com/deploy?repo=https://github.com/pettikadaionline-del/seo-audit-agent
+services:
+  - type: web
+    name: seo-audit-agent
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./v2/Dockerfile
+    dockerContext: ./v2
+    healthCheckPath: /api/health
+    envVars:
+      - key: ACCESS_CODE
+        sync: false        # you choose it at deploy time; required to run audits
+      - key: ANTHROPIC_API_KEY
+        sync: false        # optional: leave blank for rule-based recommendations
+      - key: PAGESPEED_API_KEY
+        sync: false        # optional: free Google key for Core Web Vitals quota
+      - key: DEFAULT_MAX_PAGES
+        value: "50"
+      - key: HARD_MAX_PAGES
+        value: "200"

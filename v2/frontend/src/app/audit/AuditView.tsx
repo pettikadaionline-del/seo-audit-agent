@@ -1,9 +1,9 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Download, FileText, Loader2, RefreshCw } from "lucide-react";
-import { api, type Action, type ActionStatus, type Audit } from "@/lib/api";
+import { AccessCodeError, api, type Action, type ActionStatus, type Audit } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -22,8 +22,7 @@ const STAGES = [
   ["saving", "Saving"],
 ];
 
-export default function AuditPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function AuditView({ id }: { id: string }) {
   const [audit, setAudit] = useState<Audit | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actions, setActions] = useState<Record<string, Action>>({});
@@ -47,7 +46,7 @@ export default function AuditPage({ params }: { params: Promise<{ id: string }> 
         setAudit((prev) => ({ ...(prev ?? { result: null }), ...s }));
         if (s.status !== "failed") timer = setTimeout(poll, 1500);
       } catch (e) {
-        setError((e as Error).message);
+        setError(e instanceof AccessCodeError ? "This dashboard needs an access code. Enter it on the home page, then reopen this audit." : (e as Error).message);
       }
     };
     poll();

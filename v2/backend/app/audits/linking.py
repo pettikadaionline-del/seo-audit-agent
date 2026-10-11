@@ -62,7 +62,7 @@ def run(ctx: AuditContext) -> list[Finding]:
     if len(generic) >= 3:
         out.append(finding("links.generic_anchors", C, "Generic anchor text", Severity.low,
                            "Anchors like 'click here' or 'read more' tell search engines nothing about the target page.",
-                           "Use descriptive anchors that name the destination (e.g. 'Tirunelveli halwa gift box' instead of 'shop now').",
+                           "Use descriptive anchors that name the destination (e.g. 'pricing for small teams' instead of 'click here').",
                            generic, effort=1))
 
     inbound = inbound_counts(ctx)

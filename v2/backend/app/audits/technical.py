@@ -65,7 +65,7 @@ def run(ctx: AuditContext) -> list[Finding]:
             out.append(finding(
                 "tech.no_sitemap", C, "No valid XML sitemap found", Severity.medium,
                 "No sitemap was declared in robots.txt or found at /sitemap.xml" + (f"; errors: {sm.errors[:3]}" if sm.errors else "."),
-                "Generate an XML sitemap of indexable, canonical URLs (most CMSs/Shopify do this automatically), reference it in robots.txt and submit it in Google Search Console.",
+                "Generate an XML sitemap of indexable, canonical URLs (most CMSs and site builders do this automatically), reference it in robots.txt and submit it in Google Search Console.",
                 [(e["url"], {"error": e["error"]}) for e in sm.errors] or [(meta.root + "/sitemap.xml", {"found": False})],
                 site_level=True, effort=1,
             ))

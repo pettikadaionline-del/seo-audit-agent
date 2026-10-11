@@ -56,7 +56,7 @@ def run(ctx: AuditContext) -> list[Finding]:
     if not q_pages and not faq_schema:
         out.append(finding("ai.no_question_content", C, "No question-and-answer style content", Severity.medium,
                            "No headings phrased as questions and no FAQ markup were found. AI answers are triggered by questions; pages that state a question and answer it directly in the next 40–60 words are easier to extract.",
-                           "Add FAQ sections to product/category pages using real customer questions (shelf life, shipping abroad, ingredients, storage), each answered in 2–3 direct sentences.",
+                           "Add FAQ sections to key pages using real questions your customers or readers ask (from support emails, search queries, reviews), each answered in 2–3 direct sentences.",
                            [(p.url, {"question_headings": 0}) for p in pages[:15]], effort=2, confidence="medium"))
 
     articles = [p for p in pages if p.word_count >= 500]

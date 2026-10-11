@@ -78,3 +78,22 @@ async def test_full_audit_flow(client, fixture_site):
 async def test_rejects_invalid_url(client):
     r = await client.post("/api/audits", json={"url": "ftp://nope"})
     assert r.status_code == 422
+
+
+async def test_access_code_gate(client, monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "access_code", "s3cret")
+    assert (await client.get("/api/health")).json()["access_code_required"] is True
+    assert (await client.get("/api/audits")).status_code == 401
+    assert (await client.get("/api/audits", headers={"x-access-code": "wrong"})).status_code == 401
+    assert (await client.get("/api/audits", headers={"x-access-code": "s3cret"})).status_code == 200
+    assert (await client.get("/api/audits?code=s3cret")).status_code == 200  # export links use the query form
+
+
+def test_postgres_url_gets_async_driver():
+    from app.core.config import Settings
+
+    assert Settings(database_url="postgres://u:p@h/db").database_url == "postgresql+asyncpg://u:p@h/db"
+    assert Settings(database_url="postgresql://u:p@h/db").database_url == "postgresql+asyncpg://u:p@h/db"
+    assert Settings(database_url="sqlite+aiosqlite:///x.db").database_url == "sqlite+aiosqlite:///x.db"

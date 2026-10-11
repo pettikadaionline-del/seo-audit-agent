@@ -14,29 +14,43 @@ Browser ─► Next.js (dashboard + /api proxy) ─► FastAPI
 
 ## Quick start
 
-### Docker (recommended)
+### Deploy (one click, free tier)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/pettikadaionline-del/seo-audit-agent)
+
+You'll be asked for three values:
+
+| Variable | What to enter |
+|---|---|
+| `ACCESS_CODE` | Any password you choose. Visitors need it to run audits, so strangers can't use your Claude credits |
+| `ANTHROPIC_API_KEY` | Optional. Without it, recommendations are rule-based |
+| `PAGESPEED_API_KEY` | Optional. A free Google key that raises the quota for Core Web Vitals data |
+
+Your link will be `https://seo-audit-agent-xxxx.onrender.com`. On the free plan:
+- The service sleeps after 15 minutes idle, so the first visit afterwards takes about 1 minute.
+- Audit history is cleared on restart, so export reports you want to keep.
+- For persistent history, add a Render Postgres database and set `DATABASE_URL` to its URL; `postgres://` URLs are handled automatically.
+
+### Docker (any VPS)
 ```bash
-cp .env.example .env        # add ANTHROPIC_API_KEY (optional, but needed for AI advice)
-docker compose up --build
-# open http://localhost:3000
+cp .env.example .env        # set ACCESS_CODE, optionally ANTHROPIC_API_KEY
+docker compose up --build   # dashboard + API on http://localhost:8000, Postgres for history
 ```
 
 ### Local dev
 ```bash
-# backend
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r backend/requirements-dev.txt
-cd backend && uvicorn app.main:app --reload          # SQLite by default, http://localhost:8000/docs
+cd backend && uvicorn app.main:app --reload          # API on :8000 (SQLite)
 
-# frontend (new terminal)
-cd frontend && npm install && npm run dev             # http://localhost:3000 (proxies /api → BACKEND_URL, default :8000)
+cd frontend && npm install && npm run dev             # dashboard on :3000, proxies /api to :8000
 ```
+In production the dashboard is a static export (`npm run build` → `out/`), served by FastAPI on the same origin as the API (see `Dockerfile`).
 
 ### Tests
 ```bash
 cd backend && pytest -q
 ```
-There are 36 tests: SSRF blocking (including DNS-rebinding defence), HTML parsing, each audit module, scoring, the AI layer (mocked Claude client, covering refusal and invalid-output fallbacks), PageSpeed field-vs-lab parsing, and an end-to-end API run. The end-to-end test does a real HTTP crawl of `tests/fixture_site`, a small site with known planted issues, and checks that each planted issue is found.
+There are 38 tests: SSRF blocking (including DNS-rebinding defence), HTML parsing, each audit module, scoring, the AI layer (mocked Claude client, covering refusal and invalid-output fallbacks), PageSpeed field-vs-lab parsing, the access-code gate, and an end-to-end API run. The end-to-end test does a real HTTP crawl of `tests/fixture_site`, a small site with known planted issues, and checks that each planted issue is found.
 
 ## What gets audited
 
@@ -67,6 +81,7 @@ The competitor weight is only used when competitors are provided. Otherwise the 
 - Cost: one call per audit, covering up to 40 findings. At Opus 5.5 pricing ($4/$20 per M tokens) that's roughly **$0.10–0.40 per audit**. Set `AI_EFFORT=low` to cut that further.
 
 ## Safety & crawler etiquette
+- **Access code:** with `ACCESS_CODE` set, every API call except `/api/health` requires it (constant-time compare).
 - **SSRF:** only http/https on ports 80/443/8080/8443. Every URL and every redirect hop is DNS-resolved and rejected if it points to a private, loopback, link-local, CGNAT or metadata address. The IP actually connected to is re-checked after connecting (DNS rebinding). `ALLOW_PRIVATE_TARGETS=true` is for local testing only.
 - **Politeness:** robots.txt is respected, including `Crawl-delay` (capped at 10s). Requests to each host are throttled (default 0.5s), and concurrency, page count, depth and response size (5 MB) are all capped. Sitemap gzip-bombs and XXE are blocked.
 - **Evidence over opinion:** heuristic checks are marked `confidence: medium`. The AI never claims guaranteed rankings, rich results or AI citations.
@@ -82,4 +97,4 @@ The competitor weight is only used when competitors are provided. Otherwise the 
 - **Job runner:** audits run in-process (asyncio, capped by `MAX_CONCURRENT_AUDITS`). That's fine for one server. For multiple API instances, move `execute_audit()` onto a Redis-backed queue (arq or Celery); the function is already self-contained. Redis was left out deliberately until that's needed.
 - **No JavaScript rendering:** the crawler reads raw HTML, which is also what most AI crawlers see. JS-only content is flagged rather than rendered. A Playwright rendering pass is the next upgrade for SPA-heavy sites.
 - **Field data:** CrUX field data only exists for sites with enough Chrome traffic. Without a `PAGESPEED_API_KEY`, anonymous PSI quota is low.
-- **Postgres:** the schema is created on startup. Add Alembic before changing models in production.
+- **Database:** the schema is created on startup. Add Alembic before changing models in production.

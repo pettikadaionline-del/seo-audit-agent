@@ -23,7 +23,7 @@ def run(ctx: AuditContext) -> list[Finding]:
             "content.thin", C, f"Thin content (under {THIN_WORDS} words)", sev,
             "Pages with little main content struggle to rank and give AI answer engines nothing to quote. "
             "Word count is a proxy, not a target: category and contact pages can be short by design.",
-            "For pages that should rank, add genuinely useful content: specifics, FAQs, how-to-use, origin story, comparisons. "
+            "For pages that should rank, add genuinely useful content: specifics, FAQs, how-to guidance, comparisons, original data or examples. "
             "Merge or noindex near-empty pages that have no search purpose.",
             thin, effort=3, confidence="medium",
         ))

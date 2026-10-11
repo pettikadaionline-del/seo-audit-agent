@@ -149,8 +149,35 @@ export interface PageRow {
   in_sitemap: boolean;
 }
 
+const CODE_KEY = "seo-agent-access-code";
+
+export function getAccessCode(): string {
+  try {
+    return localStorage.getItem(CODE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function setAccessCode(code: string) {
+  try {
+    localStorage.setItem(CODE_KEY, code);
+  } catch {}
+}
+
+export class AccessCodeError extends Error {
+  constructor() {
+    super("Access code required or incorrect.");
+  }
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, { cache: "no-store", ...init, headers: { "content-type": "application/json", ...init?.headers } });
+  const res = await fetch(`/api${path}`, {
+    cache: "no-store",
+    ...init,
+    headers: { "content-type": "application/json", "x-access-code": getAccessCode(), ...init?.headers },
+  });
+  if (res.status === 401) throw new AccessCodeError();
   if (!res.ok) {
     let msg = `Request failed (${res.status})`;
     try {
@@ -163,6 +190,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  health: () => req<{ status: string; ai_configured: boolean; access_code_required: boolean }>("/health"),
   createAudit: (body: { url: string; max_pages: number; max_depth: number; competitors: string[]; pagespeed: boolean }) =>
     req<AuditBrief>("/audits", { method: "POST", body: JSON.stringify(body) }),
   listAudits: () => req<AuditBrief[]>("/audits"),
@@ -173,5 +201,6 @@ export const api = {
   updateAction: (id: string, actionId: number, body: Partial<Pick<Action, "status" | "owner" | "notes">>) =>
     req<Action>(`/audits/${id}/actions/${actionId}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteAudit: (id: string) => req<void>(`/audits/${id}`, { method: "DELETE" }),
-  exportUrl: (id: string, format: "json" | "csv" | "html") => `/api/audits/${id}/export?format=${format}`,
+  exportUrl: (id: string, format: "json" | "csv" | "html") =>
+    `/api/audits/${id}/export?format=${format}${getAccessCode() ? `&code=${encodeURIComponent(getAccessCode())}` : ""}`,
 };

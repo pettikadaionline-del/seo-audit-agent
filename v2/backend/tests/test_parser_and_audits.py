@@ -7,31 +7,31 @@ from app.crawler.robots import parse_robots
 from app.crawler.sitemap import SitemapInfo
 
 HTML = """<!doctype html><html lang="en"><head>
-<title>Tirunelveli Halwa – Buy Online</title>
-<meta name="description" content="Fresh halwa shipped worldwide.">
+<title>Oak Widget – Buy Online</title>
+<meta name="description" content="Handmade widgets shipped worldwide.">
 <meta name="viewport" content="width=device-width">
-<meta property="og:title" content="Halwa">
-<link rel="canonical" href="/products/halwa">
+<meta property="og:title" content="Widget">
+<link rel="canonical" href="/products/widget">
 <script src="/blocking.js"></script><script src="/ok.js" defer></script>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"Product","name":"Halwa","offers":{"@type":"Offer","price":"450"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Product","name":"Widget","offers":{"@type":"Offer","price":"450"}}</script>
 <script type="application/ld+json">{bad json</script>
-</head><body><h1>Halwa</h1><h3>Skipped level</h3><h2>How long does halwa last?</h2>
+</head><body><h1>Widget</h1><h3>Skipped level</h3><h2>How long does a widget last?</h2>
 <p>Text here.</p><a href="/about#team">About us</a><a href="https://other.com/x" rel="nofollow">click here</a>
-<a href="mailto:a@b.com">mail</a><img src="/a.jpg"><img src="/b.jpg" alt="Halwa box" width="10" height="10" loading="lazy">
+<a href="mailto:a@b.com">mail</a><img src="/a.jpg"><img src="/b.jpg" alt="Widget box" width="10" height="10" loading="lazy">
 </body></html>"""
 
 
-def make_page(url="https://shop.example/products/halwa", html=HTML, **kw) -> PageData:
+def make_page(url="https://shop.example/products/widget", html=HTML, **kw) -> PageData:
     p = PageData(url=url, final_url=url, status=200, content_type="text/html", **kw)
     return parse_html(p, html)
 
 
 def test_parse_html_extracts_signals():
     p = make_page()
-    assert p.title == "Tirunelveli Halwa – Buy Online"
-    assert p.canonical == "https://shop.example/products/halwa"
+    assert p.title == "Oak Widget – Buy Online"
+    assert p.canonical == "https://shop.example/products/widget"
     assert p.viewport and p.lang == "en"
-    assert p.h1 == ["Halwa"]
+    assert p.h1 == ["Widget"]
     assert p.question_headings == 1
     assert p.render_blocking_scripts == 1 and p.scripts_total == 2
     assert len(p.json_ld) == 1 and p.json_ld[0]["@type"] == "Product"
@@ -41,7 +41,7 @@ def test_parse_html_extracts_signals():
     assert internal[0].url == "https://shop.example/about"  # fragment stripped
     assert external[0].nofollow and external[0].anchor == "click here"
     assert len(p.links) == 2  # mailto ignored
-    assert [i.alt for i in p.images] == [None, "Halwa box"]
+    assert [i.alt for i in p.images] == [None, "Widget box"]
 
 
 def test_normalize_link():

@@ -72,7 +72,8 @@ def _action_dict(a: Action) -> dict:
 @router.get("/health")
 async def health():
     s = get_settings()
-    return {"status": "ok", "ai_configured": bool(s.anthropic_api_key), "pagespeed_key": bool(s.pagespeed_api_key)}
+    return {"status": "ok", "ai_configured": bool(s.anthropic_api_key), "pagespeed_key": bool(s.pagespeed_api_key),
+            "access_code_required": bool(s.access_code)}
 
 
 @router.post("/audits", status_code=202)

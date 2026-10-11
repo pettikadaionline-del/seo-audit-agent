@@ -27,7 +27,7 @@ def run(ctx: AuditContext) -> list[Finding]:
         out.append(finding("perf.slow_ttfb", C, "Slow server response (TTFB > 800 ms)", Severity.high if med > 1500 else Severity.medium,
                            f"Measured by the audit crawler (median {round(med)} ms across pages). Includes network distance from the audit server, so treat as indicative. "
                            "Slow TTFB delays every other metric, including LCP.",
-                           "Enable full-page caching or a CDN, upgrade hosting, and cut slow database queries/apps. On Shopify, remove unused apps that inject server-side code.",
+                           "Enable full-page caching or a CDN, upgrade hosting, and cut slow database queries/apps. Remove unused plugins/apps that add server-side work.",
                            slow, effort=3, confidence="medium"))
 
     heavy = [(p.url, {"html_kb": round(p.html_bytes / 1024)}) for p in pages if p.html_bytes > 300_000]
